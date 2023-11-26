@@ -1,0 +1,44 @@
+import pandas as pd
+import tensorflow as tf
+from transformers import AutoTokenizer, TFAutoModelForSequenceClassification
+from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
+from tensorflow.keras.utils import to_categorical
+
+# Load the Wisconsin Breast Cancer dataset
+data = pd.read_csv('wisconsin.data', names=['id', 'radius', 'texture', 'perimiter', 'area', 'smoothness', 'compactness', 'concavity', 'symmetry', 'fractal dimension', 'diagnosis'])
+
+# Preprocess the data to handle missing values and encode categorical variables
+data.dropna(inplace=True)
+data['diagnosis'] = data['diagnosis'].map({'M': 1, 'B': 0})
+
+# Extract features and labels
+features = data[['radius', 'texture', 'perimiter', 'area', 'smoothness', 'compactness', 'concavity', 'symmetry', 'fractal dimension']]
+labels = to_categorical(data['diagnosis'])  # Convert labels to one-hot encoding for multi-class classification
+
+# Convert features to text representation
+tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+encoded_features = tokenizer(features.values.tolist(), truncation=True, padding='max_length', max_length=256)
+
+# Split the data into training and testing sets using stratified K-fold cross-validation
+kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+# Define and train the LLM for sequence classification
+model = TFAutoModelForSequenceClassification.from_pretrained('bert-base-uncased',
+                                                            num_labels=2,   # Multi-class classification (benign, malignant)
+                                                            classes=['Benign', 'Malignant'])  # Define class names
+
+# Define callbacks for model saving and early stopping
+checkpoint_callback = ModelCheckpoint('best_model.hdf5',
+                                     save_best_only=True,
+                                     monitor='val_accuracy',
+                                     verbose=1)
+
+early_stopping_callback = EarlyStopping(monitor='val_accuracy',
+                                        patience=3,
+                                        verbose=1)
+
+# Train the model using 5-fold cross-validation
+scores = []
+for train_index, test_index in kfold.split(encoded_features
